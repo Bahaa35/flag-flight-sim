@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flag Mission Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: the 3D desert fills the screen; a flight-console panel floats on the left, telemetry strip along the bottom, photo gallery opens over everything. */
+:root{
+  --panel:#f6f3ec;
+  --panel-edge:#d3cab8;
+  --ink:#1d1a15;
+  --ink-soft:#655d50;
+  --accent:#c8102e;      /* mission red: start button and drone */
+  --accent-ink:#ffffff;
+  --ok:#2b7a3d;
+  --bonus:#a3660a;
+  --row:#ebe5d8;
+  --font-display:"Saira Condensed","Arial Narrow",Arial,sans-serif;
+  --font-body:"IBM Plex Sans","Segoe UI",Arial,sans-serif;
+  --hud-h:60px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --panel:#1b1814; --panel-edge:#3d372e; --ink:#f0ebe1; --ink-soft:#b0a696;
+    --accent:#e5383b; --accent-ink:#ffffff; --ok:#6fcf87; --bonus:#f0b24a; --row:#28241e;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --panel:#1b1814; --panel-edge:#3d372e; --ink:#f0ebe1; --ink-soft:#b0a696;
+  --accent:#e5383b; --accent-ink:#ffffff; --ok:#6fcf87; --bonus:#f0b24a; --row:#28241e;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#000;color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.4;overflow:hidden}
+[hidden]{display:none !important}
+#scene{position:absolute;inset:0}
+#scene canvas{display:block;width:100%;height:100%}
+
+.panel{
+  position:absolute;top:16px;left:16px;width:300px;max-height:calc(100% - var(--hud-h) - 48px);
+  display:flex;flex-direction:column;gap:14px;overflow:auto;
+  background:var(--panel);border:1px solid var(--panel-edge);border-radius:6px;padding:16px;
+  box-shadow:0 6px 24px rgba(0,0,0,.25);
+}
+h1{font-family:var(--font-display);font-weight:700;font-size:26px;line-height:1;margin:0;letter-spacing:.02em;text-transform:uppercase;text-wrap:balance}
+.step{font-size:12px;color:var(--ink-soft);margin:4px 0 0}
+h2{font-family:var(--font-display);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 6px}
+
+.btn-row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--panel-edge);background:transparent;color:var(--ink);padding:7px 10px}
+button:hover{background:var(--row)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{flex:1;background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-family:var(--font-display);font-weight:700;font-size:18px;letter-spacing:.06em;text-transform:uppercase;padding:9px 12px}
+button.primary:hover{filter:brightness(1.1);background:var(--accent)}
+button.primary.small{flex:none;font-size:15px;padding:6px 12px}
+button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button.wide{width:100%;text-align:center;font-weight:600}
+select,input[type="number"]{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--panel-edge);border-radius:4px;padding:5px 6px}
+input[type="range"],input[type="checkbox"]{accent-color:var(--accent)}
+
+dl.facts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0}
+dl.facts dt{color:var(--ink-soft)}
+dl.facts dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.late{color:var(--accent);font-weight:600}
+
+.field{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}
+.field label{color:var(--ink-soft)}
+.field output{font-variant-numeric:tabular-nums;font-weight:600}
+.field input[type="range"]{grid-column:1 / -1;width:100%}
+.field input[type="number"]{width:92px;text-align:right}
+.info{font-size:12px;color:var(--ink-soft);margin:6px 0 0}
+.warn{font-size:12px;color:var(--accent);font-weight:600;margin:6px 0 0}
+.result{font-weight:600;margin:8px 0 0}
+.result.good{color:var(--ok)}
+.result.bad{color:var(--accent)}
+
+.flag-list{display:flex;flex-direction:column;gap:6px;margin:8px 0 0;padding:0;list-style:none}
+.flag-row{display:grid;grid-template-columns:22px 48px 1fr;gap:8px;align-items:center;width:100%;text-align:left;background:var(--row);border:1px solid transparent;border-radius:4px;padding:6px 8px}
+.flag-row:hover{border-color:var(--accent);background:var(--row)}
+.flag-row .n{font-family:var(--font-display);font-weight:700;font-size:16px;text-align:center}
+.flag-row.bonus .n{color:var(--bonus)}
+.flag-row img{width:48px;height:24px;display:block;border:1px solid var(--panel-edge)}
+.flag-row .name{font-weight:600;display:block}
+.flag-row .pos{color:var(--ink-soft);font-size:12px;font-variant-numeric:tabular-nums;display:block}
+.empty,.hidden-key{color:var(--ink-soft);margin:8px 0 0}
+
+.checks{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+label.check{display:flex;gap:8px;align-items:center;cursor:pointer}
+.note{font-size:12px;color:var(--ink-soft);margin:0}
+
+.hud{
+  position:absolute;left:16px;right:16px;bottom:16px;display:flex;gap:8px 20px;flex-wrap:wrap;align-items:center;
+  background:var(--panel);border:1px solid var(--panel-edge);border-radius:6px;padding:8px 14px;
+  box-shadow:0 6px 24px rgba(0,0,0,.25);
+}
+.hud .cell{display:flex;flex-direction:column}
+.hud .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft)}
+.hud .v{font-family:var(--font-display);font-weight:600;font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid currentColor;font-size:15px}
+.pill.fly{color:var(--ok)}
+.hud .spacer{flex:1}
+
+.cam-caption{
+  position:absolute;top:16px;right:16px;max-width:min(360px, calc(100% - 32px));
+  background:var(--panel);border:1px solid var(--panel-edge);border-left:4px solid var(--accent);border-radius:4px;padding:6px 10px;font-size:12px;
+}
+.pip{
+  position:absolute;right:16px;bottom:calc(var(--hud-h) + 28px);width:272px;aspect-ratio:16/9;
+  border:2px solid var(--panel);border-radius:4px;box-shadow:0 6px 24px rgba(0,0,0,.35);pointer-events:none;
+}
+.pip canvas{display:block;width:100%;height:100%;border-radius:2px}
+.pip > span{position:absolute;white-space:nowrap;left:0;top:0;background:var(--panel);color:var(--ink);font-size:11px;font-weight:600;padding:2px 8px;border-bottom-right-radius:4px;font-variant-numeric:tabular-nums}
+.pip i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px}
+
+/* Photo gallery */
+.modal{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;padding:16px;z-index:20}
+.modal-box{margin:auto;width:min(1180px,100%);height:min(820px,100%);background:var(--panel);border:1px solid var(--panel-edge);border-radius:6px;display:flex;flex-direction:column;overflow:hidden}
+.modal-head{display:flex;gap:12px;align-items:baseline;padding:14px 16px 10px;border-bottom:1px solid var(--panel-edge)}
+.modal-head h2{font-size:22px;color:var(--ink);margin:0;letter-spacing:.03em}
+.modal-head .count{color:var(--ink-soft);font-variant-numeric:tabular-nums;flex:1}
+.dl-bar{display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center;padding:10px 16px;border-bottom:1px solid var(--panel-edge);background:var(--row)}
+.dl-bar label{display:flex;gap:6px;align-items:center;color:var(--ink-soft)}
+.dl-status{font-size:12px;font-variant-numeric:tabular-nums;flex-basis:100%;min-height:17px}
+.gal-body{flex:1;min-height:0;display:grid;grid-template-columns:1fr 380px}
+.thumbs{overflow:auto;padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start;grid-auto-rows:max-content}
+.thumb{padding:0;border:1px solid var(--panel-edge);background:var(--row);display:flex;flex-direction:column;overflow:hidden;text-align:left}
+.thumb canvas{display:block;width:100%;height:auto;flex:none;aspect-ratio:16/9;background:#b9a57a}
+.thumb span{font-size:11px;padding:3px 6px;font-variant-numeric:tabular-nums;color:var(--ink-soft)}
+.thumb[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.detail{border-left:1px solid var(--panel-edge);padding:12px 16px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.detail canvas{width:100%;aspect-ratio:16/9;display:block;background:#b9a57a;border:1px solid var(--panel-edge)}
+.gal-empty{padding:24px 16px;color:var(--ink-soft);margin:0}
+.pager{display:flex;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid var(--panel-edge)}
+.pager .pg{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--ink-soft)}
+
+@media (max-width:860px){ .gal-body{grid-template-columns:1fr} .detail{border-left:0;border-top:1px solid var(--panel-edge);max-height:45%} }
+@media (max-width:640px){
+  .panel{top:auto;bottom:calc(var(--hud-h) + 28px);left:16px;right:16px;width:auto;max-height:38%}
+  .hud .spacer{display:none}
+  .cam-caption{top:8px;right:8px}
+  .pip{display:none}
+}
+</style>
+</head>
+<body>
+<div id="scene" aria-label="3D view of the mission field"></div>
+
+<section class="panel" aria-label="Mission console">
+  <header>
+    <h1>Flag Mission Simulator</h1>
+    <p class="step">Survey the field, shoot photos, then search for the bonus flag</p>
+  </header>
+
+  <div class="btn-row">
+    <button class="primary" id="startBtn" type="button">Start mission</button>
+    <button id="resetBtn" type="button">Reset</button>
+  </div>
+  <button class="wide" id="openGallery" type="button">Photos from the drone (0)</button>
+
+  <div>
+    <h2>View</h2>
+    <div class="btn-row">
+      <button type="button" id="viewOverview" aria-pressed="true">Overview</button>
+      <button type="button" id="viewFollow" aria-pressed="false">Follow drone</button>
+      <button type="button" id="viewCam" aria-pressed="false">Drone camera</button>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="pinToggle" checked> Show flag pins</label>
+      <label class="check"><input type="checkbox" id="pathToggle" checked> Show flight path</label>
+      <label class="check"><input type="checkbox" id="gridToggle" checked> Show 100 m grid</label>
+    </div>
+  </div>
+
+  <div>
+    <h2>Camera</h2>
+    <div class="btn-row">
+      <button type="button" id="modePhoto" aria-pressed="true">Photos</button>
+      <button type="button" id="modeVideo" aria-pressed="false">Video</button>
+    </div>
+    <div class="field" id="photoField" style="margin-top:8px">
+      <label for="photoCount">Photos over the field</label>
+      <input type="number" id="photoCount" min="100" max="10000" step="100" value="1000">
+      <input type="range" id="photoRange" min="100" max="10000" step="100" value="1000" aria-label="Photos over the field">
+    </div>
+    <div class="field" id="videoField" style="margin-top:8px" hidden>
+      <label for="fpsSel">Frames per second</label>
+      <select id="fpsSel"><option value="10">10</option><option value="30" selected>30</option><option value="56">56</option></select>
+    </div>
+    <p class="info" id="capInfo"></p>
+    <p class="warn" id="capWarn" hidden></p>
+  </div>
+
+  <div>
+    <h2>Flight</h2>
+    <div class="field">
+      <label for="cruise">Cruise speed</label><output id="cruiseOut" for="cruise">18 m/s</output>
+      <input type="range" id="cruise" min="5" max="40" step="1" value="18">
+    </div>
+    <p class="info" id="speedInfo"></p>
+    <dl class="facts" style="margin-top:8px">
+      <dt>Flight height</dt><dd>100 m</dd>
+      <dt>Field survey</dt><dd id="estSurvey"></dd>
+      <dt>Bonus search, at most</dt><dd id="estSearch"></dd>
+      <dt>Longest mission</dt><dd id="estTotal"></dd>
+      <dt>Time limit</dt><dd>10:00</dd>
+    </dl>
+  </div>
+
+  <div>
+    <h2>Bonus flag search</h2>
+    <label class="check"><input type="checkbox" id="searchOn" checked> Search outside the field after the survey</label>
+    <div class="field" style="margin-top:8px">
+      <label for="bandSel">Search up to</label>
+      <select id="bandSel"><option value="1" selected>125 m outside (1 loop)</option><option value="2">250 m outside (2 loops)</option><option value="3">375 m outside (3 loops)</option></select>
+    </div>
+    <p class="info">The drone circles the field from outside. When the bonus flag shows up in a photo, it leaves the loop, flies over the flag and stops.</p>
+    <p class="result" id="bonusResult" hidden></p>
+  </div>
+
+  <div>
+    <h2>Flags on the ground</h2>
+    <label class="check"><input type="checkbox" id="keyToggle" checked> Show answer key</label>
+    <ul class="flag-list" id="flagList"></ul>
+    <p class="empty" id="flagEmpty">Press Start mission to place the flags.</p>
+    <p class="hidden-key" id="keyHidden" hidden>Answer key hidden. The flags are still on the field.</p>
+  </div>
+
+  <p class="note">Flags are true size (1 m × 2 m), so they are tiny from far away. The drone and the pins are enlarged so you can see them. Click a flag in the list to fly the view down to it.</p>
+</section>
+
+<div class="cam-caption" id="camCaption" hidden>Drone camera, looking straight down. Pins, labels and the grid are hidden, so this is what the real camera sees.</div>
+<div class="pip" id="pip" hidden><canvas id="pipCanvas" width="384" height="216"></canvas><span><i></i><span id="pipText">Live camera</span></span></div>
+
+<section class="hud" id="hud" aria-label="Drone telemetry">
+  <div class="cell"><span class="k">Status</span><span class="v"><span class="pill" id="hudState">On ground</span></span></div>
+  <div class="cell"><span class="k">Height</span><span class="v" id="hudAlt">0 m</span></div>
+  <div class="cell"><span class="k">Speed</span><span class="v" id="hudSpeed">0 m/s</span></div>
+  <div class="cell"><span class="k">Position from home</span><span class="v" id="hudPos">E 0 m, N 0 m</span></div>
+  <div class="cell"><span class="k" id="hudShotsK">Photos taken</span><span class="v" id="hudShots">0</span></div>
+  <div class="cell"><span class="k">Mission clock</span><span class="v" id="hudClock">00:00</span></div>
+  <div class="spacer"></div>
+  <div class="cell"><label class="k" for="speedSel">Sim speed</label>
+    <select id="speedSel"><option value="1">1× real time</option><option value="5" selected>5×</option><option value="10">10×</option><option value="20">20×</option></select>
+  </div>
+</section>
+
+<div class="modal" id="gallery" hidden role="dialog" aria-modal="true" aria-labelledby="galTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="galTitle">Photos from the drone</h2>
+      <span class="count" id="galCount"></span>
+      <button type="button" id="galClose">Close</button>
+    </div>
+    <div class="dl-bar">
+      <label>Photo size <select id="dlSize"></select></label>
+      <label>Part <select id="dlPart"></select></label>
+      <button type="button" class="primary small" id="dlZip">Download zip</button>
+      <button type="button" id="dlCsv">Download positions (CSV)</button>
+      <span class="dl-status" id="dlStatus" role="status"></span>
+    </div>
+    <div class="gal-body">
+      <div class="thumbs" id="thumbs"></div>
+      <aside class="detail" id="detail" hidden>
+        <canvas id="detailCanvas" width="1280" height="720"></canvas>
+        <dl class="facts" id="detailFacts"></dl>
+        <button type="button" id="dlOne">Download this photo</button>
+      </aside>
+    </div>
+    <div class="pager">
+      <button type="button" id="pgPrev">Previous</button>
+      <span class="pg" id="pgText"></span>
+      <button type="button" id="pgNext">Next</button>
+      <button type="button" id="pgLast">Latest</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ---------- Mission constants (metres). World: X = east, Z = -north, Y = up. Home = field's south-west corner. ---------- */
+var FIELD = 1000, ALT = 100, FLAG_W = 2, FLAG_H = 1;
+var CLIMB_RATE = 4;                    // m/s
+var TIME_LIMIT = 600;                  // s
+var LINES = 8, LINE_SPACING = FIELD / LINES;   // 125 m, inside the camera's ~130 m ground width
+var DRONE_SCALE = 30;                  // display enlargement
+// Camera Module 3: 66° horizontal field of view, 16:9 sensor (4608 x 2592)
+var CAM_ASPECT = 16/9, CAM_HFOV = 66;
+var CAM_VFOV = 2 * Math.atan(Math.tan(CAM_HFOV/2*Math.PI/180) / CAM_ASPECT) * 180/Math.PI;
+var HALF_ACROSS = ALT * Math.tan(CAM_HFOV/2*Math.PI/180);     // ~65 m
+var HALF_ALONG = HALF_ACROSS / CAM_ASPECT;                    // ~36.5 m
+var SEE_ACROSS = HALF_ACROSS - 3, SEE_ALONG = HALF_ALONG - 2.5;   // whole flag inside the frame
+var PHOTO_SIZE = [4608, 2592], VIDEO_SIZE = [2304, 1296];
+var FULL_RATE_MAX = 14;                // full-size frames per second the sensor can deliver
+
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------- Country flags, drawn at 2:1 to match the 1 m × 2 m cloth ---------- */
+function bands(c, W, H, colors, vertical, weights){
+  var total = 0, i, pos = 0;
+  weights = weights || colors.map(function(){return 1;});
+  for(i=0;i<weights.length;i++) total += weights[i];
+  for(i=0;i<colors.length;i++){
+    var size = weights[i]/total;
+    c.fillStyle = colors[i];
+    if(vertical) c.fillRect(pos*W, 0, size*W+1, H); else c.fillRect(0, pos*H, W, size*H+1);
+    pos += size;
+  }
+}
+function tri(c, color, pts){ c.fillStyle=color; c.beginPath(); c.moveTo(pts[0],pts[1]); for(var i=2;i<pts.length;i+=2) c.lineTo(pts[i],pts[i+1]); c.closePath(); c.fill(); }
+function disc(c, color, x, y, r){ c.fillStyle=color; c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill(); }
+function star(c, color, cx, cy, r, rot){
+  c.fillStyle=color; c.beginPath();
+  for(var i=0;i<10;i++){ var a = rot + i*Math.PI/5, rr = i%2 ? r*0.382 : r; c.lineTo(cx+rr*Math.cos(a), cy+rr*Math.sin(a)); }
+  c.closePath(); c.fill();
+}
+function nordic(c, W, H, bg, outer, inner){
+  c.fillStyle=bg; c.fillRect(0,0,W,H);
+  var cx = W*0.36, cy = H/2, t = H*(inner ? 0.25 : 0.16);
+  c.fillStyle=outer; c.fillRect(cx-t/2,0,t,H); c.fillRect(0,cy-t/2,W,t);
+  if(inner){ var t2 = H*0.125; c.fillStyle=inner; c.fillRect(cx-t2/2,0,t2,H); c.fillRect(0,cy-t2/2,W,t2); }
+}
+var COUNTRIES = [
+  {name:"Egypt", draw:function(c,W,H){ bands(c,W,H,["#CE1126","#FFFFFF","#000000"]);
+      c.fillStyle="#C09300"; c.beginPath(); c.ellipse(W/2,H/2,H*0.055,H*0.12,0,0,Math.PI*2); c.fill();
+      tri(c,"#C09300",[W/2,H*0.42, W/2-H*0.13,H*0.44, W/2-H*0.07,H*0.58]);
+      tri(c,"#C09300",[W/2,H*0.42, W/2+H*0.13,H*0.44, W/2+H*0.07,H*0.58]); }},
+  {name:"France", draw:function(c,W,H){ bands(c,W,H,["#0055A4","#FFFFFF","#EF4135"],true); }},
+  {name:"Germany", draw:function(c,W,H){ bands(c,W,H,["#000000","#DD0000","#FFCE00"]); }},
+  {name:"Italy", draw:function(c,W,H){ bands(c,W,H,["#009246","#FFFFFF","#CE2B37"],true); }},
+  {name:"Belgium", draw:function(c,W,H){ bands(c,W,H,["#000000","#FAE042","#ED2939"],true); }},
+  {name:"Ireland", draw:function(c,W,H){ bands(c,W,H,["#169B62","#FFFFFF","#FF883E"],true); }},
+  {name:"Nigeria", draw:function(c,W,H){ bands(c,W,H,["#008751","#FFFFFF","#008751"],true); }},
+  {name:"Netherlands", draw:function(c,W,H){ bands(c,W,H,["#AE1C28","#FFFFFF","#21468B"]); }},
+  {name:"Austria", draw:function(c,W,H){ bands(c,W,H,["#ED2939","#FFFFFF","#ED2939"]); }},
+  {name:"Ukraine", draw:function(c,W,H){ bands(c,W,H,["#0057B7","#FFD700"]); }},
+  {name:"Poland", draw:function(c,W,H){ bands(c,W,H,["#FFFFFF","#DC143C"]); }},
+  {name:"Colombia", draw:function(c,W,H){ bands(c,W,H,["#FCD116","#003893","#CE1126"],false,[2,1,1]); }},
+  {name:"Thailand", draw:function(c,W,H){ bands(c,W,H,["#A51931","#F4F5F8","#2D2A4A","#F4F5F8","#A51931"],false,[1,1,2,1,1]); }},
+  {name:"Japan", draw:function(c,W,H){ c.fillStyle="#FFFFFF"; c.fillRect(0,0,W,H); disc(c,"#BC002D",W/2,H/2,H*0.3); }},
+  {name:"Bangladesh", draw:function(c,W,H){ c.fillStyle="#006A4E"; c.fillRect(0,0,W,H); disc(c,"#F42A41",W*0.45,H/2,H*0.33); }},
+  {name:"Sweden", draw:function(c,W,H){ nordic(c,W,H,"#006AA7","#FECC00"); }},
+  {name:"Denmark", draw:function(c,W,H){ nordic(c,W,H,"#C8102E","#FFFFFF"); }},
+  {name:"Finland", draw:function(c,W,H){ nordic(c,W,H,"#FFFFFF","#003580"); }},
+  {name:"Norway", draw:function(c,W,H){ nordic(c,W,H,"#BA0C2F","#FFFFFF","#00205B"); }},
+  {name:"Turkey", draw:function(c,W,H){ c.fillStyle="#E30A17"; c.fillRect(0,0,W,H);
+      disc(c,"#FFFFFF",H*0.62,H/2,H*0.25); disc(c,"#E30A17",H*0.6825,H/2,H*0.2);
+      star(c,"#FFFFFF",H*0.93,H/2,H*0.125,Math.PI); }},
+  {name:"UAE", draw:function(c,W,H){ bands(c,W,H,["#00732F","#FFFFFF","#000000"]); c.fillStyle="#FF0000"; c.fillRect(0,0,W/4,H); }},
+  {name:"Palestine", draw:function(c,W,H){ bands(c,W,H,["#000000","#FFFFFF","#007A3D"]); tri(c,"#CE1126",[0,0, W/3,H/2, 0,H]); }},
+  {name:"Sudan", draw:function(c,W,H){ bands(c,W,H,["#D21034","#FFFFFF","#000000"]); tri(c,"#007229",[0,0, W/3,H/2, 0,H]); }},
+  {name:"Kuwait", draw:function(c,W,H){ bands(c,W,H,["#007A3D","#FFFFFF","#CE1126"]); tri(c,"#000000",[0,0, W/4,H/3, W/4,H*2/3, 0,H]); }},
+  {name:"Czechia", draw:function(c,W,H){ bands(c,W,H,["#FFFFFF","#D7141A"]); tri(c,"#11457E",[0,0, W/2,H/2, 0,H]); }}
+];
+function flagCanvas(country, W){
+  var cv = document.createElement("canvas"); cv.width = W; cv.height = W/2;
+  country.draw(cv.getContext("2d"), cv.width, cv.height);
+  return cv;
+}
+
+/* ---------- Renderer, cameras, light ---------- */
+var host = $("scene");
+var renderer = new THREE.WebGLRenderer({antialias:true, logarithmicDepthBuffer:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.5));
+host.appendChild(renderer.domElement);
+var maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+var HAZE = 0xead9b5;
+var scene = new THREE.Scene();
+scene.background = new THREE.Color(HAZE);
+scene.fog = new THREE.Fog(HAZE, 2200, 7500);
+
+var camera = new THREE.PerspectiveCamera(50, 1, 1, 20000);
+var droneCam = new THREE.PerspectiveCamera(CAM_VFOV, CAM_ASPECT, 0.5, 20000);
+var controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI/2 - 0.02;
+controls.minDistance = 3; controls.maxDistance = 4000;
+
+var SUN = new THREE.Vector3(-400, 900, 300).normalize();
+scene.add(new THREE.HemisphereLight(0xfff6e0, 0xb89a66, 0.85));
+var sun = new THREE.DirectionalLight(0xfff1d6, 0.85); sun.position.copy(SUN).multiplyScalar(1000); scene.add(sun);
+// ground shadow of a point at height h lands at (x + SHX*h, z + SHZ*h)
+var SHX = -SUN.x / SUN.y, SHZ = -SUN.z / SUN.y;
+
+/* ---------- Seeded random for a stable landscape ---------- */
+function makeRng(seed){
+  return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+var R = makeRng(20261114);
+function rr(a,b){ return a + R()*(b-a); }
+function pick(arr){ return arr[Math.floor(R()*arr.length)]; }
+
+/* ---------- Sky, sand, dunes ---------- */
+(function sky(){
+  var cv = document.createElement("canvas"); cv.width = 4; cv.height = 256;
+  var c = cv.getContext("2d"), g = c.createLinearGradient(0,0,0,256);
+  g.addColorStop(0, "#3f86c4"); g.addColorStop(0.32, "#7fb4dc"); g.addColorStop(0.47, "#d6e0d6"); g.addColorStop(0.5, "#ead9b5"); g.addColorStop(1, "#ead9b5");
+  c.fillStyle = g; c.fillRect(0,0,4,256);
+  var dome = new THREE.Mesh(new THREE.SphereGeometry(9000, 24, 16),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv), side:THREE.BackSide, fog:false, depthWrite:false}));
+  dome.position.set(FIELD/2, 0, -FIELD/2); scene.add(dome);
+})();
+
+(function sand(){
+  // fine detail: grains and wind ripples, one tile = 25 m
+  var cv = document.createElement("canvas"); cv.width = cv.height = 512;
+  var c = cv.getContext("2d"); c.fillStyle = "#d8bf8c"; c.fillRect(0,0,512,512);
+  var grains = ["#c9ad78","#e3cd9f","#bfa26c","#ecd9ae"], i;
+  for(i=0;i<9000;i++){ c.fillStyle = grains[i%4]; c.globalAlpha = 0.25 + R()*0.4; c.fillRect(R()*512, R()*512, 1+R()*2, 1+R()*2); }
+  c.lineWidth = 1.5;
+  for(i=0;i<70;i++){
+    var y = R()*512, x = R()*512, len = 60 + R()*160;
+    c.strokeStyle = i%2 ? "#c6aa74" : "#e6d2a6"; c.globalAlpha = 0.35;
+    c.beginPath(); c.moveTo(x, y);
+    c.bezierCurveTo(x+len*0.3, y-5, x+len*0.6, y+5, x+len, y); c.stroke();
+  }
+  var tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = maxAniso; tex.repeat.set(720,720);
+  var ground = new THREE.Mesh(new THREE.PlaneGeometry(18000,18000), new THREE.MeshLambertMaterial({map:tex}));
+  ground.rotation.x = -Math.PI/2; ground.position.set(FIELD/2, 0, -FIELD/2); scene.add(ground);
+
+  // large soft patches so the sand does not look tiled from the air
+  var pv = document.createElement("canvas"); pv.width = pv.height = 1024;
+  var p = pv.getContext("2d");
+  for(i=0;i<170;i++){
+    var px = 90 + R()*844, py = 90 + R()*844, pr = 20 + R()*70;
+    var gr = p.createRadialGradient(px,py,0,px,py,pr), dark = R() < 0.55;
+    gr.addColorStop(0, dark ? "rgba(140,105,55,0.22)" : "rgba(255,240,200,0.24)"); gr.addColorStop(1, dark ? "rgba(140,105,55,0)" : "rgba(255,240,200,0)");
+    p.fillStyle = gr; p.fillRect(px-pr, py-pr, pr*2, pr*2);
+  }
+  var patches = new THREE.Mesh(new THREE.PlaneGeometry(5200,5200),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(pv), transparent:true, depthWrite:false}));
+  patches.rotation.x = -Math.PI/2; patches.position.set(FIELD/2, 0.02, -FIELD/2); patches.renderOrder = 1; scene.add(patches);
+
+  // two dirt tracks crossing the area
+  [[-500,260,1700,880, 5],[380,-600,820,1700, 4]].forEach(function(t){
+    var dx = t[2]-t[0], dn = t[3]-t[1], len = Math.hypot(dx,dn);
+    var m = new THREE.Mesh(new THREE.PlaneGeometry(len, t[4]), new THREE.MeshBasicMaterial({color:0xa98d5c, transparent:true, opacity:0.55, depthWrite:false}));
+    m.rotation.order = "YXZ"; m.rotation.x = -Math.PI/2; m.rotation.y = Math.atan2(dn, dx);
+    m.position.set((t[0]+t[2])/2, 0.04, -(t[1]+t[3])/2); m.renderOrder = 2; scene.add(m);
+  });
+
+  // dunes on the horizon
+  var n = 30, dunes = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 20, 10), new THREE.MeshLambertMaterial({color:0xd2b680}), n), d = new THREE.Object3D();
+  for(i=0;i<n;i++){
+    var a = i/n*Math.PI*2 + rr(-0.08,0.08), dist = rr(2700, 5200);
+    d.position.set(FIELD/2 + Math.cos(a)*dist, -12, -FIELD/2 + Math.sin(a)*dist);
+    d.scale.set(rr(500,1000), rr(60,190), rr(320,620)); d.rotation.y = rr(0,Math.PI); d.updateMatrix(); dunes.setMatrixAt(i, d.matrix);
+  }
+  dunes.frustumCulled = false; scene.add(dunes);
+})();
+
+/* ---------- Desert clutter: trees, shrubs, rocks and man-made objects ---------- */
+var obstacles = [];   // {e, n, r}: flags keep clear of these
+var AREA_MIN = -480, AREA_MAX = FIELD + 480;
+(function clutter(){
+  var dummy = new THREE.Object3D(), col = new THREE.Color();
+  var bigOnes = [];
+  function spot(clear){
+    for(var t=0;t<60;t++){
+      var e = rr(AREA_MIN, AREA_MAX), n = rr(AREA_MIN, AREA_MAX), ok = Math.hypot(e,n) > 35;
+      for(var i=0;i<bigOnes.length && ok;i++) if(Math.hypot(e-bigOnes[i].e, n-bigOnes[i].n) < clear + bigOnes[i].r) ok = false;
+      if(ok) return {e:e, n:n};
+    }
+    return {e:rr(AREA_MIN,AREA_MAX), n:rr(AREA_MIN,AREA_MAX)};
+  }
+  function instanced(geo, mat, items, place){
+    var m = new THREE.InstancedMesh(geo, mat, items.length);
+    items.forEach(function(it, i){
+      dummy.position.set(0,0,0); dummy.rotation.set(0,0,0); dummy.scale.set(1,1,1);
+      place(dummy, it); dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix);
+      if(it.color != null) m.setColorAt(i, col.set(it.color));
+    });
+    m.frustumCulled = false; scene.add(m); return m;
+  }
+  function bare(list){ return list.map(function(p){ return {e:p.e, n:p.n, h:p.h}; }); }
+  var shadows = [];   // {x, z, rx, rz}
+
+  // palms
+  var palms = [], i;
+  for(i=0;i<95;i++){ var s = spot(7); var p = {e:s.e, n:s.n, h:rr(5.5,10), c:rr(2.6,3.8), rot:rr(0,6.28), color:pick([0x4f7a35,0x5d8a3c,0x466c30])};
+    palms.push(p); bigOnes.push({e:p.e, n:p.n, r:p.c}); obstacles.push({e:p.e, n:p.n, r:p.c+3});
+    shadows.push({x:p.e+SHX*p.h, z:-p.n+SHZ*p.h, rx:p.c*0.85, rz:p.c*0.85}); shadows.push({x:p.e+SHX*p.h*0.5, z:-p.n+SHZ*p.h*0.5, rx:0.5, rz:p.h*0.3}); }
+  var trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1, 7); trunkGeo.translate(0, 0.5, 0);
+  instanced(trunkGeo, new THREE.MeshLambertMaterial({color:0x7a6248}), bare(palms), function(d,p){ d.position.set(p.e,0,-p.n); d.scale.set(1,p.h,1); });
+  var fr = [], NF = 9;
+  for(i=0;i<NF;i++){
+    var a = i/NF*Math.PI*2, dx = Math.cos(a), dz = Math.sin(a), px = -dz*0.15, pz = dx*0.15;
+    var bL=[px,0,pz], bR=[-px,0,-pz], mL=[dx*0.55+px,0.2,dz*0.55+pz], mR=[dx*0.55-px,0.2,dz*0.55-pz], tip=[dx,-0.28,dz];
+    fr.push.apply(fr, bL.concat(bR, mR, bL, mR, mL, mL, mR, tip));
+  }
+  var frondGeo = new THREE.BufferGeometry(); frondGeo.setAttribute("position", new THREE.Float32BufferAttribute(fr, 3)); frondGeo.computeVertexNormals();
+  instanced(frondGeo, new THREE.MeshLambertMaterial({side:THREE.DoubleSide}), palms, function(d,p){ d.position.set(p.e,p.h,-p.n); d.scale.setScalar(p.c); d.rotation.y = p.rot; });
+
+  // acacia-style trees
+  var trees = [];
+  for(i=0;i<70;i++){ var s2 = spot(8); var t = {e:s2.e, n:s2.n, h:rr(2.4,4.2), c:rr(2.4,4.6), rot:rr(0,6.28), color:pick([0x66773a,0x5a6b33,0x77803f,0x6f6a38])};
+    trees.push(t); bigOnes.push({e:t.e, n:t.n, r:t.c}); obstacles.push({e:t.e, n:t.n, r:t.c+3});
+    shadows.push({x:t.e+SHX*(t.h+0.5), z:-t.n+SHZ*(t.h+0.5), rx:t.c, rz:t.c*0.9}); }
+  instanced(trunkGeo, new THREE.MeshLambertMaterial({color:0x5e4a36}), bare(trees), function(d,t){ d.position.set(t.e,0,-t.n); d.scale.set(1.4,t.h,1.4); });
+  instanced(new THREE.IcosahedronGeometry(1,1), new THREE.MeshLambertMaterial({flatShading:true}), trees, function(d,t){ d.position.set(t.e,t.h+t.c*0.2,-t.n); d.scale.set(t.c,t.c*0.38,t.c*0.92); d.rotation.y = t.rot; });
+
+  // shrubs
+  var shrubs = [];
+  for(i=0;i<820;i++){ var sh = {e:rr(AREA_MIN,AREA_MAX), n:rr(AREA_MIN,AREA_MAX), r:rr(0.35,1.3), rot:rr(0,6.28), color:pick([0x7d8448,0x8a8650,0x6f7a40,0x94885a,0x7a6f45])};
+    if(Math.hypot(sh.e,sh.n) < 30) continue;
+    shrubs.push(sh); obstacles.push({e:sh.e, n:sh.n, r:sh.r+1.5}); shadows.push({x:sh.e+SHX*sh.r*0.5, z:-sh.n+SHZ*sh.r*0.5, rx:sh.r*1.05, rz:sh.r*0.95}); }
+  instanced(new THREE.IcosahedronGeometry(1,0), new THREE.MeshLambertMaterial({flatShading:true}), shrubs, function(d,s){ d.position.set(s.e,s.r*0.3,-s.n); d.scale.set(s.r,s.r*0.62,s.r); d.rotation.y = s.rot; });
+
+  // rocks
+  var rocks = [];
+  for(i=0;i<660;i++){ var rk = {e:rr(AREA_MIN,AREA_MAX), n:rr(AREA_MIN,AREA_MAX), r:Math.pow(R(),2.2)*1.7+0.25, a:rr(0.7,1.3), b:rr(0.45,0.8), rot:rr(0,6.28), color:pick([0x8e8372,0x9c907c,0x7c7264,0xa39679,0x6f675c])};
+    if(Math.hypot(rk.e,rk.n) < 30) continue;
+    rocks.push(rk); obstacles.push({e:rk.e, n:rk.n, r:rk.r+1.5}); shadows.push({x:rk.e+SHX*rk.r*0.4, z:-rk.n+SHZ*rk.r*0.4, rx:rk.r*1.1, rz:rk.r}); }
+  instanced(new THREE.DodecahedronGeometry(1,0), new THREE.MeshLambertMaterial({flatShading:true}), rocks, function(d,k){ d.position.set(k.e,k.r*k.b*0.4,-k.n); d.scale.set(k.r*k.a,k.r*k.b,k.r); d.rotation.y = k.rot; });
+
+  // tarps and sheets: flat coloured shapes that can be mistaken for a flag
+  var tarpColors = [0x2a5caa,0xf0efe8,0xc0392b,0x2e8b57,0xe0b020,0x30343a,0xe07b22,0x7a4fa0];
+  for(i=0;i<24;i++){
+    var sp = spot(5), w = rr(1.4,4.2), dd = rr(1,3);
+    var tarp = new THREE.Mesh(new THREE.PlaneGeometry(w,dd), new THREE.MeshLambertMaterial({color:tarpColors[i%tarpColors.length], side:THREE.DoubleSide}));
+    tarp.rotation.order = "YXZ"; tarp.rotation.x = -Math.PI/2; tarp.rotation.y = rr(0,6.28); tarp.position.set(sp.e, 0.1, -sp.n); scene.add(tarp);
+    obstacles.push({e:sp.e, n:sp.n, r:Math.max(w,dd)/2+4});
+  }
+  // barrel clusters
+  var barrels = [], barrelColors = [0xb22222,0x1f4e9c,0xd9a520,0x4a4f55];
+  for(i=0;i<13;i++){ var bs = spot(4), nb = 2 + Math.floor(R()*4);
+    for(var j=0;j<nb;j++) barrels.push({e:bs.e+rr(-1.2,1.2), n:bs.n+rr(-1.2,1.2), color:pick(barrelColors)});
+    obstacles.push({e:bs.e, n:bs.n, r:5}); shadows.push({x:bs.e+SHX*0.5, z:-bs.n+SHZ*0.5, rx:1.8, rz:1.6}); }
+  instanced(new THREE.CylinderGeometry(0.3,0.3,0.9,12), new THREE.MeshLambertMaterial(), barrels, function(d,b){ d.position.set(b.e,0.45,-b.n); });
+
+  // parked vehicles
+  var cars = [], carColors = [0xf2f2f0,0xb9bec4,0x24467a,0x8a1f1f,0x3a3d40];
+  for(i=0;i<7;i++){ var cs = spot(8); var car = {e:cs.e, n:cs.n, rot:rr(0,6.28), color:carColors[i%carColors.length]};
+    cars.push(car); bigOnes.push({e:car.e,n:car.n,r:3}); obstacles.push({e:car.e, n:car.n, r:7}); shadows.push({x:car.e+SHX*1.2, z:-car.n+SHZ*1.2, rx:2.8, rz:2.2}); }
+  instanced(new THREE.BoxGeometry(4.6,0.9,1.9), new THREE.MeshLambertMaterial(), cars, function(d,c){ d.position.set(c.e,0.85,-c.n); d.rotation.y = c.rot; });
+  var cabGeo = new THREE.BoxGeometry(2.1,0.75,1.7); cabGeo.translate(-0.5,0,0);
+  instanced(cabGeo, new THREE.MeshLambertMaterial(), cars.map(function(c){ return {e:c.e,n:c.n,rot:c.rot,color:0x2a2f35}; }), function(d,c){ d.position.set(c.e,1.65,-c.n); d.rotation.y = c.rot; });
+
+  // small sheds
+  var sheds = [];
+  for(i=0;i<7;i++){ var ss = spot(12); var sd = {e:ss.e, n:ss.n, rot:rr(0,6.28), w:rr(4,7), d:rr(3,5), color:pick([0xd9cdb4,0xc9b592,0xe6e1d6])};
+    sheds.push(sd); bigOnes.push({e:sd.e,n:sd.n,r:5}); obstacles.push({e:sd.e, n:sd.n, r:10}); shadows.push({x:sd.e+SHX*2.6, z:-sd.n+SHZ*2.6, rx:sd.w*0.7, rz:sd.d*0.8}); }
+  instanced(new THREE.BoxGeometry(1,2.6,1), new THREE.MeshLambertMaterial(), sheds, function(d,s){ d.position.set(s.e,1.3,-s.n); d.scale.set(s.w,1,s.d); d.rotation.y = s.rot; });
+  var roofGeo = new THREE.ConeGeometry(0.75,1,4); roofGeo.rotateY(Math.PI/4);
+  instanced(roofGeo, new THREE.MeshLambertMaterial({flatShading:true}), sheds.map(function(s){ return {e:s.e,n:s.n,rot:s.rot,w:s.w,d:s.d,color:pick([0x8c4a3a,0x6d6f72,0x9a7b4f])}; }),
+    function(d,s){ d.position.set(s.e,3.2,-s.n); d.scale.set(s.w*1.05,1.2,s.d*1.05); d.rotation.y = s.rot; });
+
+  // soft ground shadows
+  var shGeo = new THREE.CircleGeometry(1, 18); shGeo.rotateX(-Math.PI/2);
+  var sm = instanced(shGeo, new THREE.MeshBasicMaterial({color:0x2a1e0c, transparent:true, opacity:0.3, depthWrite:false}), shadows,
+    function(d,s){ d.position.set(s.x,0.06,s.z); d.scale.set(s.rx,1,s.rz); });
+  sm.renderOrder = 3;
+})();
+
+/* ---------- Helpers: grid, boundary, labels, flight path (hidden from the drone camera) ---------- */
+var helpers = new THREE.Group(); scene.add(helpers);
+var grid = new THREE.GridHelper(FIELD, 10, 0x3a2c14, 0x3a2c14);
+grid.material.transparent = true; grid.material.opacity = 0.3; grid.material.depthWrite = false;
+grid.position.set(FIELD/2, 0.08, -FIELD/2); helpers.add(grid);
+var edge = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0.1,0), new THREE.Vector3(FIELD,0.1,0), new THREE.Vector3(FIELD,0.1,-FIELD), new THREE.Vector3(0,0.1,-FIELD)]),
+  new THREE.LineBasicMaterial({color:0xffffff}));
+helpers.add(edge);
+[[0,0],[FIELD,0],[FIELD,FIELD],[0,FIELD]].forEach(function(c){
+  var post = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,14,6), new THREE.MeshBasicMaterial({color:0xffffff}));
+  post.position.set(c[0], 7, -c[1]); helpers.add(post);
+});
+
+function label(text, opts){
+  opts = opts || {};
+  var cv = document.createElement("canvas"); cv.width = 256; cv.height = 128;
+  var c = cv.getContext("2d");
+  c.font = "700 64px 'Saira Condensed', 'Arial Narrow', Arial, sans-serif";
+  c.textAlign = "center"; c.textBaseline = "middle";
+  var w = Math.min(244, c.measureText(text).width + 44), x = 128-w/2, y = 24, h = 80, r = 16;
+  c.fillStyle = opts.bg || "#1d1a15";
+  c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.fill();
+  c.fillStyle = opts.color || "#ffffff"; c.fillText(text, 128, 66);
+  var s = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv), depthTest:false, transparent:true}));
+  s.scale.set((opts.scale||80), (opts.scale||80)/2, 1); s.renderOrder = 10; return s;
+}
+var l1 = label("HOME", {scale:90}); l1.position.set(-10, 45, 10); helpers.add(l1);
+var l2 = label("N ↑", {scale:100}); l2.position.set(FIELD/2, 30, -FIELD-70); helpers.add(l2);
+var l3 = label("1 km", {scale:90}); l3.position.set(FIELD, 34, 55); helpers.add(l3);
+var l4 = label("1 km", {scale:90}); l4.position.set(-75, 34, -FIELD); helpers.add(l4);
+
+// Home pad (a real object, so the drone camera sees it)
+var pad = new THREE.Mesh(new THREE.CircleGeometry(4, 40), new THREE.MeshBasicMaterial({color:0x1d1a15}));
+pad.rotation.x = -Math.PI/2; pad.position.set(0, 0.1, 0); scene.add(pad);
+var padRing = new THREE.Mesh(new THREE.RingGeometry(3, 3.5, 40), new THREE.MeshBasicMaterial({color:0xffffff}));
+padRing.rotation.x = -Math.PI/2; padRing.position.set(0, 0.12, 0); scene.add(padRing);
+
+/* ---------- Hexarotor (red) ---------- */
+var drone = new THREE.Group(), rotors = [];
+(function buildDrone(){
+  var dark = new THREE.MeshLambertMaterial({color:0x22272b}), red = new THREE.MeshLambertMaterial({color:0xd0112b});
+  drone.add(new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,0.1,6), red));
+  var top = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.14,0.06,6), red); top.position.y = 0.08; drone.add(top);
+  for(var i=0;i<6;i++){
+    var a = i*Math.PI/3 + Math.PI/6;
+    var arm = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.035,0.045), red);
+    arm.position.set(Math.cos(a)*0.28, 0, Math.sin(a)*0.28); arm.rotation.y = -a; drone.add(arm);
+    var motor = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.06,10), dark);
+    motor.position.set(Math.cos(a)*0.5, 0.03, Math.sin(a)*0.5); drone.add(motor);
+    var rotor = new THREE.Group(); rotor.position.set(Math.cos(a)*0.5, 0.07, Math.sin(a)*0.5);
+    rotor.add(new THREE.Mesh(new THREE.BoxGeometry(0.38,0.006,0.035), new THREE.MeshLambertMaterial({color:0xf2f2f2})));
+    drone.add(rotor); rotors.push(rotor);
+  }
+  [-1,1].forEach(function(s){ var leg = new THREE.Mesh(new THREE.BoxGeometry(0.03,0.16,0.4), dark); leg.position.set(s*0.14,-0.12,0); drone.add(leg); });
+  var nose = new THREE.Mesh(new THREE.ConeGeometry(0.05,0.14,8), new THREE.MeshLambertMaterial({color:0xffffff}));
+  nose.rotation.x = -Math.PI/2; nose.position.set(0,0.02,-0.26); drone.add(nose);
+  var cam = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.04,0.06), dark); cam.position.y = -0.07; drone.add(cam);
+  drone.scale.setScalar(DRONE_SCALE);
+  scene.add(drone);
+})();
+var GROUND_Y = 0.2 * DRONE_SCALE;   // legs touch the ground
+var CRUISE_Y = GROUND_Y + ALT;
+
+/* ---------- Controls ---------- */
+var flagList = $("flagList"), flagEmpty = $("flagEmpty"), keyHidden = $("keyHidden"), keyToggle = $("keyToggle"),
+    pinToggle = $("pinToggle"), pathToggle = $("pathToggle"), gridToggle = $("gridToggle"),
+    hudState = $("hudState"), hudAlt = $("hudAlt"), hudPos = $("hudPos"), hudClock = $("hudClock"), hudSpeed = $("hudSpeed"),
+    hudShots = $("hudShots"), hudShotsK = $("hudShotsK"),
+    speedSel = $("speedSel"), startBtn = $("startBtn"), cruise = $("cruise"), cruiseOut = $("cruiseOut"),
+    photoCount = $("photoCount"), photoRange = $("photoRange"), fpsSel = $("fpsSel"),
+    searchOn = $("searchOn"), bandSel = $("bandSel"), bonusResult = $("bonusResult");
+
+/* ---------- Flight route: 8 survey lines, then loops around the field for the bonus flag ---------- */
+var route = [], cum = [], SURVEY_PTS = 0, SURVEY_LEN = 0, ROUTE_LEN = 0;
+var plannedSurvey = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({color:0x1d3557, dashSize:14, gapSize:10}));
+var plannedSearch = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({color:0x8a5a00, dashSize:14, gapSize:10}));
+helpers.add(plannedSurvey); helpers.add(plannedSearch);
+function P(e, n){ return new THREE.Vector3(e, CRUISE_Y, -n); }
+function searchLoops(){ return searchOn.checked ? Number(bandSel.value) : 0; }
+function buildRoute(){
+  route = [P(0,0)];
+  var i, x, endX = 0;
+  for(i=0;i<LINES;i++){
+    x = LINE_SPACING/2 + i*LINE_SPACING; endX = x;
+    if(i%2 === 0){ route.push(P(x,0), P(x,FIELD)); } else { route.push(P(x,FIELD), P(x,0)); }
+  }
+  SURVEY_PTS = route.length;
+  // each loop runs 62.5 m further out; corners overshoot by 30 m so the camera covers the corner too
+  var ext = 30;
+  for(i=0;i<searchLoops();i++){
+    var d = LINE_SPACING/2 + i*LINE_SPACING, lo = -d, hi = FIELD + d;
+    route.push(P(endX,lo), P(hi+ext,lo), P(hi,lo+ext), P(hi,hi+ext), P(hi-ext,hi), P(lo-ext,hi), P(lo,hi-ext), P(lo,lo-ext), P(lo+ext,lo), P(endX+40,lo));
+  }
+  cum = [0];
+  for(i=1;i<route.length;i++) cum.push(cum[i-1] + route[i].distanceTo(route[i-1]));
+  SURVEY_LEN = cum[SURVEY_PTS-1]; ROUTE_LEN = cum[cum.length-1];
+  plannedSurvey.geometry.dispose();
+  plannedSurvey.geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,GROUND_Y,0)].concat(route.slice(0, SURVEY_PTS)));
+  plannedSurvey.computeLineDistances();
+  plannedSearch.geometry.dispose();
+  plannedSearch.geometry = new THREE.BufferGeometry().setFromPoints(route.slice(SURVEY_PTS-1));
+  plannedSearch.computeLineDistances();
+}
+function segmentAt(d){ var k = 0; while(k < cum.length-2 && d > cum[k+1]) k++; return k; }
+
+var TRAIL_MAX = 140, trailBuf = new Float32Array(TRAIL_MAX * 3), passed = [];
+var trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute("position", new THREE.BufferAttribute(trailBuf, 3)); trailGeo.setDrawRange(0,0);
+var trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({color:0xd0112b})); trail.frustumCulled = false; helpers.add(trail);
+
+/* ---------- Flags ---------- */
+var flagGroup = new THREE.Group(); scene.add(flagGroup);
+var flags = [];   // {country, east, north, headingDeg, bonus, mesh, pin, seen, first, seenEl}
+
+function rand(a,b){ return a + Math.random()*(b-a); }
+function clearOfClutter(e, n){
+  for(var i=0;i<obstacles.length;i++){ var o = obstacles[i]; if(Math.abs(e-o.e) < o.r+2 && Math.abs(n-o.n) < o.r+2 && Math.hypot(e-o.e, n-o.n) < o.r+1.5) return false; }
+  return true;
+}
+function clearFlags(){ while(flagGroup.children.length) flagGroup.remove(flagGroup.children[0]); flags = []; }
+function placeFlags(){
+  clearFlags();
+  var pool = COUNTRIES.slice(), i;
+  for(i=pool.length-1;i>0;i--){ var j = Math.floor(Math.random()*(i+1)), tmp = pool[i]; pool[i]=pool[j]; pool[j]=tmp; }
+
+  // four inside the field, at least 100 m apart, clear of home and of trees, rocks and objects
+  var tries = 0;
+  while(flags.length < 4 && tries++ < 5000){
+    var e = rand(20, FIELD-20), n = rand(20, FIELD-20), ok = Math.hypot(e,n) > 40 && clearOfClutter(e,n);
+    for(i=0;i<flags.length && ok;i++) if(Math.hypot(e-flags[i].east, n-flags[i].north) < 100) ok = false;
+    if(ok) flags.push({country:pool[flags.length], east:e, north:n, bonus:false});
+  }
+  // one bonus flag outside the field, inside the chosen search distance
+  var band = Math.max(1, searchLoops()) * LINE_SPACING;
+  for(tries=0; tries<8000; tries++){
+    var be = rand(-band, FIELD+band), bn = rand(-band, FIELD+band);
+    var out = Math.max(-be, be-FIELD, -bn, bn-FIELD);
+    if(out >= 10 && out <= band-8 && clearOfClutter(be,bn)){ flags.push({country:pool[4], east:be, north:bn, bonus:true}); break; }
+  }
+
+  flags.forEach(function(f, idx){
+    f.headingDeg = Math.floor(rand(0,360)); f.seen = 0; f.first = 0;
+    var tex = new THREE.CanvasTexture(flagCanvas(f.country, 512)); tex.anisotropy = maxAniso;
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(FLAG_W, FLAG_H), new THREE.MeshBasicMaterial({map:tex, side:THREE.DoubleSide}));
+    mesh.rotation.order = "YXZ"; mesh.rotation.x = -Math.PI/2; mesh.rotation.y = -f.headingDeg*Math.PI/180;
+    mesh.position.set(f.east, 0.14, -f.north);
+    flagGroup.add(mesh); f.mesh = mesh;
+
+    var pin = new THREE.Group();
+    var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,56,6), new THREE.MeshBasicMaterial({color: f.bonus ? 0xf0b24a : 0xffffff, transparent:true, opacity:0.9}));
+    pole.position.y = 32; pin.add(pole);
+    var tag = label(f.bonus ? "B" : String(idx+1), {bg: f.bonus ? "#a3660a" : "#1d1a15", scale:70}); tag.position.y = 72; pin.add(tag);
+    pin.position.set(f.east, 0, -f.north);
+    flagGroup.add(pin); f.pin = pin;
+  });
+  renderFlagList();
+}
+function fmtEN(e, n){
+  e = Math.round(e); n = Math.round(n);
+  return (e<0 ? "W " : "E ") + Math.abs(e) + " m, " + (n<0 ? "S " : "N ") + Math.abs(n) + " m";
+}
+function seenText(f){ return f.seen ? "In " + f.seen + (f.seen === 1 ? " photo" : " photos") + ", first #" + f.first : "Not in any photo yet"; }
+function renderFlagList(){
+  flagList.innerHTML = "";
+  flagEmpty.hidden = flags.length > 0;
+  var show = keyToggle.checked;
+  keyHidden.hidden = show || flags.length === 0;
+  flags.forEach(function(f){ f.seenEl = null; });
+  if(!show) return;
+  flags.forEach(function(f, idx){
+    var li = document.createElement("li");
+    var b = document.createElement("button"); b.type = "button"; b.className = "flag-row" + (f.bonus ? " bonus" : "");
+    var n = document.createElement("span"); n.className = "n"; n.textContent = f.bonus ? "B" : String(idx+1);
+    var img = document.createElement("img"); img.alt = ""; img.src = flagCanvas(f.country, 96).toDataURL();
+    var txt = document.createElement("span");
+    var nm = document.createElement("span"); nm.className = "name"; nm.textContent = f.country.name + (f.bonus ? " (bonus)" : "");
+    var ps = document.createElement("span"); ps.className = "pos"; ps.textContent = fmtEN(f.east, f.north) + " · turned " + f.headingDeg + "°";
+    var sn = document.createElement("span"); sn.className = "pos"; sn.textContent = seenText(f); f.seenEl = sn;
+    txt.appendChild(nm); txt.appendChild(ps); txt.appendChild(sn);
+    b.appendChild(n); b.appendChild(img); b.appendChild(txt);
+    b.addEventListener("click", function(){ setView("overview", true); flyTo(new THREE.Vector3(f.east+5, 9, -f.north+8), new THREE.Vector3(f.east, 0, -f.north)); });
+    li.appendChild(b); flagList.appendChild(li);
+  });
+}
+keyToggle.addEventListener("change", renderFlagList);
+
+/* ---------- Views: overview, follow drone, drone camera ---------- */
+var view = "overview", camGoal = null, followYaw = 0, followVel = 0, followEase = 1;
+var viewBtns = {overview:$("viewOverview"), follow:$("viewFollow"), cam:$("viewCam")};
+function flyTo(pos, target){ camGoal = {pos:pos.clone(), target:target.clone()}; }
+controls.addEventListener("start", function(){ camGoal = null; });
+var OV_POS = new THREE.Vector3(-330, 560, 600), OV_TGT = new THREE.Vector3(FIELD*0.47, 0, -FIELD*0.42);
+function setView(v, keepCamera){
+  view = v;
+  Object.keys(viewBtns).forEach(function(k){ viewBtns[k].setAttribute("aria-pressed", k === v ? "true" : "false"); });
+  controls.enabled = v === "overview";
+  $("camCaption").hidden = v !== "cam";
+  if(v === "follow"){ camGoal = null; followYaw = yaw; followVel = 0; followEase = 0; return; }
+  if(keepCamera) return;
+  if(v === "overview") flyTo(OV_POS, OV_TGT);
+}
+viewBtns.overview.addEventListener("click", function(){ setView("overview"); });
+viewBtns.follow.addEventListener("click", function(){ setView("follow"); });
+viewBtns.cam.addEventListener("click", function(){ setView("cam"); });
+camera.position.copy(OV_POS); controls.target.copy(OV_TGT); controls.update();
+
+/* ---------- Camera settings: photos or video ---------- */
+var mode = "photo";
+function word(n){ return mode === "photo" ? (n === 1 ? "photo" : "photos") : (n === 1 ? "frame" : "frames"); }
+function capSpacing(){ return mode === "photo" ? SURVEY_LEN / Number(photoCount.value) : Number(cruise.value) / Number(fpsSel.value); }
+function fmt(n){ return Math.round(n).toLocaleString("en-US"); }
+function num(x){ return x >= 10 ? x.toFixed(0) : x.toFixed(1); }
+function pad2(n){ return (n<10 ? "0" : "") + n; }
+function mmss(sec){ var s = Math.round(sec); return pad2(Math.floor(s/60)) + ":" + pad2(s%60); }
+
+var V_MAX = 40;
+function minSpeed(){ return Math.ceil(ROUTE_LEN / (TIME_LIMIT - ALT/CLIMB_RATE - 5)); }
+function maxPhotos(){ return Math.max(100, Math.floor(FULL_RATE_MAX * SURVEY_LEN / Number(cruise.value) / 100) * 100); }
+function useMinSpeed(){ cruise.min = Math.min(minSpeed(), V_MAX); cruise.value = cruise.min; }
+function updateSettings(){
+  var vmin = minSpeed();
+  cruise.min = Math.min(vmin, V_MAX);
+  if(Number(cruise.value) < Number(cruise.min)) cruise.value = cruise.min;
+  var pmax = maxPhotos();
+  photoRange.max = photoCount.max = pmax;
+  if(Number(photoCount.value) > pmax) photoCount.value = pmax;
+  photoRange.value = photoCount.value;
+  var speedInfo = $("speedInfo");
+  if(vmin <= V_MAX){ speedInfo.className = "info"; speedInfo.textContent = "Slowest speed that finishes the whole mission in 10:00 is " + vmin + " m/s. You can go faster, up to " + V_MAX + " m/s."; }
+  else { speedInfo.className = "warn"; speedInfo.textContent = "This mission cannot finish in 10:00, even at " + V_MAX + " m/s. Search a smaller distance outside the field."; }
+  var v = Number(cruise.value), sp = capSpacing(), rate = v / sp, per = Math.floor(2*SEE_ALONG / sp);
+  cruiseOut.textContent = v + " m/s";
+  var info, warn = "";
+  if(mode === "photo"){
+    info = "Full size, 4608 × 2592. One photo every " + num(sp) + " m, which is " + num(rate) + " per second. Each flag lands in about " + Math.max(per,0) + " photos. At this speed the camera can take " + fmt(pmax) + " at most.";
+    if(sp > 2*SEE_ALONG) warn = "Photos are too far apart. Some ground is never photographed, so a flag can be missed.";
+    else if(rate > FULL_RATE_MAX) warn = "Camera Module 3 can shoot about " + FULL_RATE_MAX + " full-size photos per second at most. This rate is not possible on the real drone.";
+  } else {
+    info = "Video frames, 2304 × 1296 (half the detail of a photo). One frame every " + num(sp) + " m, about " + fmt(SURVEY_LEN/sp) + " frames over the field.";
+  }
+  $("capInfo").textContent = info;
+  $("capWarn").textContent = warn; $("capWarn").hidden = !warn;
+
+  var tSurvey = ALT/CLIMB_RATE + SURVEY_LEN/v, tSearch = (ROUTE_LEN - SURVEY_LEN)/v, tTotal = tSurvey + tSearch;
+  $("estSurvey").textContent = mmss(tSurvey);
+  $("estSearch").textContent = searchLoops() ? "+" + mmss(tSearch) : "off";
+  $("estTotal").textContent = mmss(tTotal) + (tTotal > TIME_LIMIT ? " (over the limit)" : "");
+  $("estTotal").className = tTotal > TIME_LIMIT ? "late" : "";
+  hudShotsK.textContent = mode === "photo" ? "Photos taken" : "Frames taken";
+}
+function setMode(m){
+  mode = m;
+  $("modePhoto").setAttribute("aria-pressed", m === "photo" ? "true" : "false");
+  $("modeVideo").setAttribute("aria-pressed", m === "video" ? "true" : "false");
+  $("photoField").hidden = m !== "photo"; $("videoField").hidden = m !== "video";
+  updateSettings();
+}
+$("modePhoto").addEventListener("click", function(){ setMode("photo"); });
+$("modeVideo").addEventListener("click", function(){ setMode("video"); });
+function clampCount(v){ v = Math.round(Number(v) || 1000); return Math.max(100, Math.min(maxPhotos(), v)); }
+photoRange.addEventListener("input", function(){ photoCount.value = photoRange.value; updateSettings(); });
+photoCount.addEventListener("change", function(){ var v = clampCount(photoCount.value); photoCount.value = v; photoRange.value = v; updateSettings(); });
+fpsSel.addEventListener("change", updateSettings);
+cruise.addEventListener("input", updateSettings);
+function flying(){ return state === "takeoff" || state === "survey" || state === "goto"; }
+function routeChanged(){ if(!flying()){ buildRoute(); useMinSpeed(); } updateSettings(); }
+searchOn.addEventListener("change", routeChanged);
+bandSel.addEventListener("change", routeChanged);
+
+/* ---------- Mission state ---------- */
+var state = "ground", clock = 0, dist = 0, yaw = 0, speedNow = 0, nextCap = 0, bonusTarget = null, bonusOutcome = "";
+// ground | takeoff | survey (lines, then bonus loops) | goto (flying to the bonus flag) | found | done
+var photos = [];   // {n, t, x, z, yaw, w, h, kind, phase}
+
+function inFrame(px, pz, pyaw, fx, fz){
+  var rx = fx - px, rz = fz - pz, s = Math.sin(pyaw), c = Math.cos(pyaw);
+  var along = rx * -s + rz * -c, across = rx * c + rz * -s;
+  return Math.abs(along) <= SEE_ALONG && Math.abs(across) <= SEE_ACROSS;
+}
+function takePhoto(x, z, t, phase){
+  var size = mode === "photo" ? PHOTO_SIZE : VIDEO_SIZE;
+  var p = {n: photos.length + 1, t: t, x: x, z: z, yaw: yaw, w: size[0], h: size[1], kind: mode, phase: phase};
+  photos.push(p);
+  var sawBonus = false;
+  for(var i=0;i<flags.length;i++){
+    var f = flags[i];
+    if(inFrame(x, z, yaw, f.east, -f.north)){ f.seen++; if(!f.first) f.first = p.n; if(f.bonus) sawBonus = true; }
+  }
+  return sawBonus;
+}
+function putDroneHome(){
+  drone.position.set(0, GROUND_Y, 0); yaw = 0; drone.rotation.y = 0; dist = 0; clock = 0; speedNow = 0;
+  passed = [new THREE.Vector3(0, GROUND_Y, 0)]; photos = []; bonusTarget = null; bonusOutcome = "";
+  bonusResult.hidden = true; galleryDirty = true;
+}
+function lockSearchControls(on){ searchOn.disabled = on; bandSel.disabled = on; }
+function start(){
+  buildRoute(); updateSettings();
+  placeFlags(); putDroneHome(); state = "takeoff"; lockSearchControls(true);
+  startBtn.textContent = "Restart mission";
+  if(view === "overview") flyTo(OV_POS, OV_TGT);
+}
+function reset(){
+  clearFlags(); renderFlagList(); putDroneHome(); state = "ground"; lockSearchControls(false);
+  buildRoute(); useMinSpeed(); updateSettings();
+  startBtn.textContent = "Start mission";
+  setView("overview");
+}
+startBtn.addEventListener("click", start);
+$("resetBtn").addEventListener("click", reset);
+
+function finish(outcome){
+  bonusOutcome = outcome; lockSearchControls(false); speedNow = 0;
+  if(outcome === "found"){
+    var b = flags[flags.length-1];
+    bonusResult.textContent = "Bonus flag found at " + mmss(clock) + ". Position: " + fmtEN(b.east, b.north) + ".";
+    bonusResult.className = "result " + (clock <= TIME_LIMIT ? "good" : "bad");
+    if(clock > TIME_LIMIT) bonusResult.textContent += " That is after the 10 minute limit.";
+  } else if(outcome === "missed"){
+    bonusResult.textContent = "Search finished at " + mmss(clock) + ". The bonus flag was not in any photo.";
+    bonusResult.className = "result bad";
+  } else { return; }
+  bonusResult.hidden = false;
+}
+function statusText(){
+  if(state === "ground") return "On ground";
+  if(state === "takeoff") return "Taking off";
+  if(state === "goto") return "Bonus flag spotted, flying to it";
+  if(state === "found") return "Over the bonus flag";
+  if(state === "done") return searchLoops() ? "Search finished" : "Survey complete";
+  var k = segmentAt(dist);
+  if(k >= SURVEY_PTS-1) return "Searching for the bonus flag";
+  if(k === 0) return "Flying to line 1";
+  return k % 2 === 1 ? "Line " + ((k+1)/2) + " of " + LINES : "Turning to line " + (k/2+1);
+}
+function updateTrail(){
+  var n = 0, count = Math.min(passed.length, TRAIL_MAX-1), i;
+  for(i=0;i<count;i++){ trailBuf[n++] = passed[i].x; trailBuf[n++] = passed[i].y; trailBuf[n++] = passed[i].z; }
+  trailBuf[n++] = drone.position.x; trailBuf[n++] = drone.position.y; trailBuf[n++] = drone.position.z;
+  trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, state === "ground" ? 0 : count+1);
+}
+var hudTick = 0, hud = $("hud"), pip = $("pip"), pipText = $("pipText"), openGallery = $("openGallery");
+function updateHud(){
+  hudState.textContent = statusText();
+  hudState.className = "pill" + (state === "ground" ? "" : " fly");
+  hudAlt.textContent = Math.round(Math.max(0, drone.position.y - GROUND_Y)) + " m";
+  hudSpeed.textContent = Math.round(speedNow) + " m/s";
+  hudPos.textContent = fmtEN(drone.position.x, -drone.position.z);
+  hudShots.textContent = fmt(photos.length);
+  hudClock.textContent = mmss(Math.floor(clock)) + " / 10:00";
+  hudClock.className = "v" + (clock > TIME_LIMIT ? " late" : "");
+  if(hudTick++ % 20 === 0){
+    document.documentElement.style.setProperty("--hud-h", hud.offsetHeight + "px");
+    openGallery.textContent = "Photos from the drone (" + fmt(photos.length) + ")";
+    pipText.textContent = "Live camera · " + fmt(photos.length) + " " + word(photos.length);
+    for(var i=0;i<flags.length;i++) if(flags[i].seenEl) flags[i].seenEl.textContent = seenText(flags[i]);
+  }
+}
+
+/* ---------- Photo rendering: any photo can be redrawn from its recorded position ---------- */
+var rtCache = {}, maxTex = renderer.capabilities.maxTextureSize;
+function renderPhoto(p, w, h){
+  if(w > maxTex){ h = Math.round(h * maxTex / w); w = maxTex; }
+  var key = w + "x" + h, entry = rtCache[key];
+  if(!entry){
+    var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    entry = rtCache[key] = {rt: new THREE.WebGLRenderTarget(w, h), buf: new Uint8Array(w*h*4), canvas: cv, ctx: cv.getContext("2d")};
+    entry.img = entry.ctx.createImageData(w, h);
+  }
+  var hv = helpers.visible, dv = drone.visible, pv = [], i;
+  helpers.visible = false; drone.visible = false;
+  for(i=0;i<flags.length;i++){ pv.push(flags[i].pin.visible); flags[i].pin.visible = false; }
+  droneCam.position.set(p.x, p.alt || ALT, p.z);
+  droneCam.up.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
+  droneCam.lookAt(p.x, 0, p.z);
+  renderer.setRenderTarget(entry.rt); renderer.render(scene, droneCam);
+  renderer.readRenderTargetPixels(entry.rt, 0, 0, w, h, entry.buf);
+  renderer.setRenderTarget(null);
+  helpers.visible = hv; drone.visible = dv;
+  for(i=0;i<flags.length;i++) flags[i].pin.visible = pv[i];
+  var row = w*4, data = entry.img.data;
+  for(var y=0;y<h;y++) data.set(entry.buf.subarray((h-1-y)*row, (h-y)*row), y*row);   // WebGL rows run bottom-up
+  entry.ctx.putImageData(entry.img, 0, 0);
+  return entry.canvas;
+}
+function toJpeg(canvas){ return new Promise(function(res){ canvas.toBlob(function(b){ res(b); }, "image/jpeg", 0.92); }); }
+function nextFrame(){ return new Promise(function(res){ requestAnimationFrame(function(){ res(); }); }); }
+function fileName(p){ return (p.kind === "photo" ? "photo_" : "frame_") + ("0000" + p.n).slice(-5) + ".jpg"; }
+function headingDeg(p){ var d = -p.yaw * 180/Math.PI; return ((d % 360) + 360) % 360; }
+function csvFor(list){
+  var rows = ["file,number,time_s,east_m,north_m,height_m,heading_deg,width_px,height_px,phase"];
+  list.forEach(function(p){ rows.push([fileName(p), p.n, p.t.toFixed(2), p.x.toFixed(2), (-p.z).toFixed(2), ALT, headingDeg(p).toFixed(1), p.w, p.h, p.phase].join(",")); });
+  return rows.join("\n") + "\n";
+}
+var CAMERA_NOTE = [
+  "Simulated Raspberry Pi Camera Module 3, pointing straight down, no gimbal tilt.",
+  "Field of view: 66 degrees horizontal, " + CAM_VFOV.toFixed(1) + " degrees vertical.",
+  "At 100 m height one image covers " + (2*HALF_ACROSS).toFixed(1) + " m x " + (2*HALF_ALONG).toFixed(1) + " m of ground.",
+  "The image centre is the drone position in positions.csv (east_m, north_m from the home corner).",
+  "heading_deg is the compass direction of the top edge of the image (0 = north, 90 = east).",
+  "Ground size of one pixel = " + (2*HALF_ACROSS).toFixed(1) + " m divided by the image width in pixels."
+].join("\n") + "\n";
+
+/* ---------- Saving files ---------- */
+var downloadsReady = (window.claude && typeof window.claude.use === "function") ? window.claude.use("downloads").catch(function(){ return null; }) : Promise.resolve(null);
+function saveFile(name, data){
+  return downloadsReady.then(function(dl){
+    if(dl) return dl.save({filename: name, data: data});
+    var blob = data instanceof Blob ? data : new Blob([data]);
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 60000);
+    return {status:"saved"};
+  });
+}
+function saveMessage(err){
+  var code = err && err.code;
+  if(code === "declined") return "Download cancelled.";
+  if(code === "rate_limited") return "Another download is still waiting. Try again in a moment.";
+  if(code === "too_large") return "That file is too large to save here. Choose a smaller photo size.";
+  return "Saving is not available in this view.";
+}
+
+/* ---------- Gallery ---------- */
+var gallery = $("gallery"), thumbs = $("thumbs"), detail = $("detail"), detailCanvas = $("detailCanvas"), detailFacts = $("detailFacts"),
+    dlSize = $("dlSize"), dlPart = $("dlPart"), dlStatus = $("dlStatus"), dlZip = $("dlZip"), dlCsv = $("dlCsv"), dlOne = $("dlOne"),
+    galCount = $("galCount"), pgText = $("pgText");
+var PAGE = 40, page = 0, selected = null, thumbQueue = [], galleryDirty = true, shownCount = -1, busy = false;
+var SIZES = [{label:"Full size", f:1, per:100}, {label:"Half size", f:0.5, per:250}, {label:"Quarter size", f:0.25, per:500}];
+SIZES.forEach(function(s, i){ var o = document.createElement("option"); o.value = i; o.textContent = s.label; dlSize.appendChild(o); });
+
+function pages(){ return Math.max(1, Math.ceil(photos.length / PAGE)); }
+function buildParts(){
+  var per = SIZES[Number(dlSize.value)].per, n = Math.ceil(photos.length / per), keep = Number(dlPart.value) || 0;
+  dlPart.innerHTML = "";
+  for(var i=0;i<n;i++){ var o = document.createElement("option"); o.value = i;
+    o.textContent = (i+1) + " of " + n + " (" + fmt(i*per+1) + " to " + fmt(Math.min(photos.length,(i+1)*per)) + ")"; dlPart.appendChild(o); }
+  if(keep < n) dlPart.value = keep;
+  dlZip.disabled = dlCsv.disabled = busy || photos.length === 0;
+}
+function showDetail(p){
+  selected = p; detail.hidden = false;
+  detailCanvas.getContext("2d").drawImage(renderPhoto(p, 1280, 720), 0, 0);
+  var rows = [["Number", "#" + p.n], ["Taken at", mmss(p.t)], ["Position", fmtEN(p.x, -p.z)], ["Height", ALT + " m"],
+    ["Heading", headingDeg(p).toFixed(0) + "°"], ["Size", p.w + " × " + p.h], ["Part of", p.phase === "survey" ? "Field survey" : "Bonus search"]];
+  detailFacts.innerHTML = "";
+  rows.forEach(function(r){ var dt = document.createElement("dt"); dt.textContent = r[0]; var dd = document.createElement("dd"); dd.textContent = r[1]; detailFacts.appendChild(dt); detailFacts.appendChild(dd); });
+  Array.prototype.forEach.call(thumbs.children, function(el){ el.setAttribute("aria-current", el.dataset.n === String(p.n) ? "true" : "false"); });
+}
+function addThumb(p){
+  var b = document.createElement("button"); b.type = "button"; b.className = "thumb"; b.dataset.n = p.n;
+  b.setAttribute("aria-current", selected && selected.n === p.n ? "true" : "false");
+  var c = document.createElement("canvas"); c.width = 320; c.height = 180;
+  var s = document.createElement("span"); s.textContent = "#" + p.n + " · " + mmss(p.t) + " · " + fmtEN(p.x, -p.z);
+  b.appendChild(c); b.appendChild(s); b.addEventListener("click", function(){ showDetail(p); });
+  thumbs.appendChild(b); thumbQueue.push({p:p, c:c});
+}
+function galleryTexts(){
+  shownCount = photos.length;
+  pgText.textContent = "Page " + (page+1) + " of " + pages();
+  galCount.textContent = fmt(photos.length) + " " + (photos.length === 1 ? "image" : "images");
+  var parts = Math.ceil(photos.length / SIZES[Number(dlSize.value)].per);
+  if(!busy && (parts !== dlPart.options.length || dlZip.disabled === (photos.length > 0))) buildParts();
+}
+function renderPage(){
+  thumbs.innerHTML = ""; thumbQueue = [];
+  page = Math.max(0, Math.min(page, pages()-1));
+  var from = page*PAGE, to = Math.min(photos.length, from+PAGE);
+  if(photos.length === 0){
+    var e = document.createElement("p"); e.className = "gal-empty"; e.textContent = "No photos yet. Start the mission and the photos appear here while the drone flies."; thumbs.appendChild(e);
+    detail.hidden = true; selected = null;
+  }
+  for(var i=from;i<to;i++) addThumb(photos[i]);
+  galleryDirty = false; galleryTexts();
+}
+function refreshGallery(){
+  if(gallery.hidden) return;
+  if(galleryDirty) renderPage();
+  else if(photos.length !== shownCount){
+    var empty = thumbs.querySelector(".gal-empty"); if(empty) empty.remove();
+    // new photos join the page being shown while it still has room
+    while(thumbs.children.length < PAGE && page*PAGE + thumbs.children.length < photos.length) addThumb(photos[page*PAGE + thumbs.children.length]);
+    galleryTexts();
+  }
+  for(var i=0;i<4 && thumbQueue.length;i++){ var q = thumbQueue.shift(); q.c.getContext("2d").drawImage(renderPhoto(q.p, 320, 180), 0, 0); }
+}
+openGallery.addEventListener("click", function(){ gallery.hidden = false; galleryDirty = true; dlStatus.textContent = ""; $("galClose").focus(); });
+function closeGallery(){ gallery.hidden = true; openGallery.focus(); }
+$("galClose").addEventListener("click", closeGallery);
+gallery.addEventListener("click", function(e){ if(e.target === gallery) closeGallery(); });
+document.addEventListener("keydown", function(e){ if(e.key === "Escape" && !gallery.hidden) closeGallery(); });
+$("pgPrev").addEventListener("click", function(){ page--; renderPage(); });
+$("pgNext").addEventListener("click", function(){ page++; renderPage(); });
+$("pgLast").addEventListener("click", function(){ page = pages()-1; renderPage(); });
+dlSize.addEventListener("change", function(){ dlPart.value = 0; buildParts(); });
+
+function setBusy(on){ busy = on; dlZip.disabled = dlCsv.disabled = dlOne.disabled = on || photos.length === 0; }
+dlZip.addEventListener("click", function(){
+  if(busy || !photos.length) return;
+  var size = SIZES[Number(dlSize.value)], part = Number(dlPart.value) || 0, missionPhotos = photos;
+  var list = photos.slice(part*size.per, (part+1)*size.per), zip = new JSZip();
+  setBusy(true);
+  (async function(){
+    for(var i=0;i<list.length;i++){
+      if(photos !== missionPhotos) throw {code:"restarted"};
+      var p = list[i];
+      zip.file(fileName(p), await toJpeg(renderPhoto(p, Math.round(p.w*size.f), Math.round(p.h*size.f))));
+      dlStatus.textContent = "Preparing image " + (i+1) + " of " + list.length + "…";
+      if(i % 2 === 1) await nextFrame();
+    }
+    zip.file("positions.csv", csvFor(list)); zip.file("camera.txt", CAMERA_NOTE);
+    dlStatus.textContent = "Packing the zip…";
+    var blob = await zip.generateAsync({type:"blob", compression:"STORE"});
+    var name = "drone_photos_" + ("0000" + list[0].n).slice(-5) + "-" + ("0000" + list[list.length-1].n).slice(-5) + ".zip";
+    await saveFile(name, blob);
+    dlStatus.textContent = "Saved " + name + " (" + list.length + " images, " + (blob.size/1048576).toFixed(0) + " MB).";
+  })().catch(function(err){
+    dlStatus.textContent = err && err.code === "restarted" ? "The mission was restarted, so this download was stopped." : saveMessage(err);
+  }).then(function(){ setBusy(false); buildParts(); });
+});
+dlCsv.addEventListener("click", function(){
+  if(busy || !photos.length) return;
+  saveFile("positions_all.csv", csvFor(photos)).then(function(){ dlStatus.textContent = "Saved positions_all.csv (" + fmt(photos.length) + " rows)."; },
+    function(err){ dlStatus.textContent = saveMessage(err); });
+});
+dlOne.addEventListener("click", function(){
+  if(busy || !selected) return;
+  var p = selected; setBusy(true);
+  toJpeg(renderPhoto(p, p.w, p.h)).then(function(blob){ return saveFile(fileName(p), blob); })
+    .then(function(){ dlStatus.textContent = "Saved " + fileName(p) + "."; }, function(err){ dlStatus.textContent = saveMessage(err); })
+    .then(function(){ setBusy(false); });
+});
+
+/* ---------- Render loop ---------- */
+var viewW = 1, viewH = 1;
+function resize(){
+  var w = host.clientWidth, h = host.clientHeight;
+  if(!w || !h) return;
+  viewW = w; viewH = h;
+  renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize); resize();
+
+function camRect(){
+  var wide = viewW > 640, hudH = hud.offsetHeight + 28;
+  var x0 = wide ? 332 : 8, y0 = wide ? 16 : 8, aw = viewW - x0 - (wide ? 16 : 8), ah = wide ? viewH - 16 - hudH : viewH*0.42;
+  var w = Math.min(aw, ah*CAM_ASPECT), h = w/CAM_ASPECT;
+  return {x: x0 + (aw-w)/2, top: y0 + (ah-h)/2, w:w, h:h};
+}
+function aimDroneCam(){
+  var h = Math.max(1.5, drone.position.y - GROUND_Y);
+  droneCam.position.set(drone.position.x, h, drone.position.z);
+  droneCam.up.set(-Math.sin(yaw), 0, -Math.cos(yaw));     // top of the photo points where the drone flies
+  droneCam.lookAt(drone.position.x, 0, drone.position.z);
+}
+function turnToward(dx, dz, sdt){
+  var want = Math.atan2(-dx, -dz), dy = Math.atan2(Math.sin(want-yaw), Math.cos(want-yaw));
+  yaw += dy * Math.min(1, sdt*1.5);
+}
+
+var last = performance.now(), prevDrone = drone.position.clone(), frameNo = 0, pipCtx = $("pipCanvas").getContext("2d");
+function frame(now){
+  var dt = Math.min(0.1, (now-last)/1000); last = now;
+  var sdt = dt * Number(speedSel.value), i, v = Number(cruise.value);
+
+  if(state === "takeoff"){
+    clock += sdt; speedNow = CLIMB_RATE;
+    drone.position.y = Math.min(CRUISE_Y, drone.position.y + CLIMB_RATE*sdt);
+    if(drone.position.y >= CRUISE_Y){ state = "survey"; passed.push(new THREE.Vector3(0, CRUISE_Y, 0)); nextCap = capSpacing()/2; }
+  } else if(state === "survey"){
+    speedNow = v;
+    var k0 = segmentAt(dist), target = Math.min(ROUTE_LEN, dist + v*sdt), spotted = false, startDist = dist;
+    // take every photo that falls inside this step, at its exact place on the path
+    while(nextCap <= target){
+      var kc = segmentAt(nextCap), a = route[kc], b = route[kc+1], f = (nextCap - cum[kc]) / (cum[kc+1] - cum[kc]);
+      var cx = a.x + (b.x-a.x)*f, cz = a.z + (b.z-a.z)*f;
+      if(kc !== k0){ for(i=k0+1;i<=kc;i++) passed.push(route[i].clone()); k0 = kc; }
+      turnToward(b.x-a.x, b.z-a.z, (nextCap - dist)/v);
+      dist = nextCap;
+      var searching = kc >= SURVEY_PTS-1;
+      var saw = takePhoto(cx, cz, clock + (nextCap - startDist)/v, searching ? "search" : "survey");
+      nextCap += capSpacing();
+      if(saw && searching){ spotted = true; drone.position.set(cx, CRUISE_Y, cz); break; }
+    }
+    if(spotted){
+      clock += (dist - startDist)/v;
+      bonusTarget = flags[flags.length-1]; passed.push(drone.position.clone()); state = "goto";
+    } else {
+      var k = segmentAt(target), a2 = route[k], b2 = route[k+1], f2 = (target - cum[k]) / (cum[k+1] - cum[k]);
+      if(k !== k0) for(i=k0+1;i<=k;i++) passed.push(route[i].clone());
+      turnToward(b2.x-a2.x, b2.z-a2.z, (target - dist)/v);
+      clock += (target - startDist)/v; dist = target;
+      drone.position.set(a2.x + (b2.x-a2.x)*f2, CRUISE_Y, a2.z + (b2.z-a2.z)*f2);
+      if(dist >= ROUTE_LEN){ state = "done"; passed.push(drone.position.clone()); finish(searchLoops() ? "missed" : ""); }
+    }
+  } else if(state === "goto"){
+    speedNow = v;
+    var gx = bonusTarget.east - drone.position.x, gz = -bonusTarget.north - drone.position.z, gd = Math.hypot(gx, gz), step = v*sdt;
+    if(gd <= step){
+      clock += gd / v; drone.position.set(bonusTarget.east, CRUISE_Y, -bonusTarget.north);
+      takePhoto(drone.position.x, drone.position.z, clock, "search");
+      state = "found"; finish("found");
+    } else {
+      clock += sdt; turnToward(gx, gz, sdt);
+      drone.position.x += gx/gd*step; drone.position.z += gz/gd*step;
+    }
+  }
+  drone.rotation.y = yaw;
+  if(state !== "ground") for(i=0;i<rotors.length;i++) rotors[i].rotation.y += (i%2 ? 1 : -1) * dt * 38;
+  updateTrail();
+
+  if(view === "follow"){
+    // chase camera: locked behind and above the drone; its heading follows the drone through a soft spring,
+    // so a turn starts gently, swings round and settles without a jolt
+    var sub = Math.max(1, Math.ceil(dt/0.02)), h = dt/sub, W0 = 1.5;
+    for(i=0;i<sub;i++){
+      var diff = Math.atan2(Math.sin(yaw-followYaw), Math.cos(yaw-followYaw));
+      followVel += (W0*W0*diff - 2*W0*followVel) * h; followYaw += followVel * h;
+    }
+    var want = new THREE.Vector3(drone.position.x + Math.sin(followYaw)*190, drone.position.y + 95, drone.position.z + Math.cos(followYaw)*190);
+    if(followEase < 1){ followEase = Math.min(1, followEase + dt*0.9); camera.position.lerp(want, followEase*followEase*followEase*0.9 + 0.06); }
+    else camera.position.copy(want);
+    controls.target.copy(drone.position);
+  }
+  prevDrone.copy(drone.position);
+  if(camGoal){
+    camera.position.lerp(camGoal.pos, 0.09); controls.target.lerp(camGoal.target, 0.09);
+    if(camera.position.distanceTo(camGoal.pos) < 0.5) camGoal = null;
+  }
+  updateHud();
+  refreshGallery();
+
+  var camView = view === "cam", showPip = !camView && state !== "ground" && viewW > 640;
+  pip.hidden = !showPip;
+  function showHelpers(on){
+    helpers.visible = on; drone.visible = on;
+    grid.visible = gridToggle.checked; plannedSurvey.visible = plannedSearch.visible = trail.visible = pathToggle.checked;
+    for(var j=0;j<flags.length;j++) flags[j].pin.visible = on && pinToggle.checked;
+  }
+  // the live camera window is its own small picture, refreshed a few times a second to keep the main view smooth
+  if(showPip && frameNo++ % 5 === 0)
+    pipCtx.drawImage(renderPhoto({x:drone.position.x, z:drone.position.z, yaw:yaw, alt:Math.max(1.5, drone.position.y - GROUND_Y)}, 384, 216), 0, 0);
+  renderer.setScissorTest(false); renderer.setViewport(0,0,viewW,viewH);
+  if(camView){
+    var r = camRect();
+    showHelpers(false); aimDroneCam();
+    renderer.setClearColor(0x000000, 1); renderer.clear();
+    renderer.setScissorTest(true);
+    renderer.setViewport(r.x, viewH - r.top - r.h, r.w, r.h); renderer.setScissor(r.x, viewH - r.top - r.h, r.w, r.h);
+    renderer.render(scene, droneCam);
+  } else {
+    controls.update();
+    showHelpers(true);
+    renderer.render(scene, camera);
+  }
+  renderer.setScissorTest(false);
+  requestAnimationFrame(frame);
+}
+buildRoute(); putDroneHome(); useMinSpeed(); setMode("photo"); updateHud();
+requestAnimationFrame(frame);
+
+// small hook for automated checks
+window.__sim = {photos:function(){ return photos; }, state:function(){ return state; }, clock:function(){ return clock; }, flags:function(){ return flags; }};
+})();
+</script>
+</body>
+</html>
